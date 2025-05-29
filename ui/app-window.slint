@@ -4,7 +4,6 @@ import "../media/OpenSans.ttf";
 export component AppWindow inherits Window {
     title: "DBD Winstreak";
     default-font-family: "Open Sans Bold";
-    accessible-role: AccessibleRole.none;
     background: transparent;
 
     in-out property <int> counter: 0;
@@ -27,14 +26,15 @@ export component AppWindow inherits Window {
     HorizontalBox {
         spacing: 0;
         padding: 0;
+        min-height: 300px;
 
         HorizontalBox {
             min-width: 450px;
-            height: 106px;
+            height: image.height + 10px;
             spacing: 5px;
             alignment: start;
 
-            Image { // Display character image
+            image := Image { // Display character image
                 source: root.killer_image;
                 width: 96px; height: 96px;
                 image-rendering: smooth;
@@ -172,7 +172,7 @@ export component AppWindow inherits Window {
         width: root.width;
         x: 0;
         y: 0;
-        z: -3;
+        z: -2;
 
         visible: black_cb.checked;
     }
