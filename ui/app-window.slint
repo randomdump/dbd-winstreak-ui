@@ -1,0 +1,179 @@
+import { Button, VerticalBox, HorizontalBox, ComboBox, CheckBox } from "std-widgets.slint";
+import "../media/OpenSans.ttf";
+
+export component AppWindow inherits Window {
+    title: "DBD Winstreak";
+    default-font-family: "Open Sans Bold";
+    accessible-role: AccessibleRole.none;
+    background: transparent;
+
+    in-out property <int> counter: 0;
+    in-out property <int> pbValue: 0;
+    in-out property <int> selected_killer_index: 0;
+
+    in property <string> killer_name;
+    in property <image> killer_image;
+    in property <[string]> killer_names;
+    in property <[string]> streak_category_names;
+    in-out property <int> selected_streak_category_index: 0;
+
+    callback previous_killer();
+    callback next_killer();
+    callback record_win();
+    callback record_loss();
+    callback killer_selected(string);
+    callback streak_category_selected(string);
+
+    HorizontalBox {
+        spacing: 0;
+        padding: 0;
+
+        HorizontalBox {
+            min-width: 450px;
+            height: 106px;
+            spacing: 5px;
+            alignment: start;
+
+            Image { // Display character image
+                source: root.killer_image;
+                width: 96px; height: 96px;
+                image-rendering: smooth;
+                image-fit: fill;
+            }
+
+            VerticalBox { // Killer name, streak, PB
+                spacing: 5px;
+                alignment: end;
+
+                Text {
+                    text: "\{streak_category_names[selected_streak_category_index]}";
+                    font-size: 10pt;
+                    color: #AAA;
+                }
+            
+                HorizontalBox {
+                    padding: 0;
+                    spacing: 10px;
+                    alignment: start;
+
+                    Text {
+                        text: root.killer_name;
+                        font-size: 20pt;
+                        font-weight: 600;
+                        color: white;
+                    }
+
+                    Text {
+                        text: "\{root.counter}";
+                        font-size: 20pt;
+                        font-weight: 500;
+                        color: white;
+                    }
+                }
+
+                HorizontalBox {
+                    padding: 0;
+
+                    Rectangle {
+                        background: #666;
+                        border-radius: 4px;
+                        width: 29px;
+                        height: 19px;
+
+                        Text {
+                            text: "PB";
+                            font-size: 10pt;
+                            color: white;
+                            font-weight: 600;
+                            x:(parent.width - self.width) / 2;
+                            y:(parent.height - self.height) / 2;
+                        }
+                    }
+
+                    Text {
+                        text: "\{root.pbValue}";
+                        font-size: 10pt;
+                        vertical-alignment: center;
+                        color: white;
+                        font-weight: 600;
+                    }
+                }
+            }
+        }
+
+        settings := VerticalBox {
+            padding: 0;
+            width: 320px;
+            min-height: 300px;
+
+            HorizontalBox { // Buttons for changing killer and recording win/loss
+                alignment: center;
+                spacing: 8px;
+                height: 50px;
+                ComboBox {
+                    model: root.killer_names;
+                    current-index: root.selected_killer_index;
+                    selected(name) => { root.killer_selected(name) }
+                }
+                Button { text: "I Won"; clicked => {record_win()} }
+                Button { text: "I Lost"; clicked => {record_loss()} }
+            }
+
+            HorizontalBox { // For Streak Category ComboBox
+                alignment: center;
+                spacing: 8px;
+                height: 50px;
+                ComboBox {
+                    model: root.streak_category_names;
+                    current-index: root.selected_streak_category_index;
+                    selected(name) => { root.streak_category_selected(name) }
+                }
+            }
+
+            GridLayout {
+                padding: 10px;
+
+                black_cb := CheckBox {
+                    row:0; col:0;
+                    text: "Black background";
+                }
+
+                shadow_cb := CheckBox {
+                    row:0; col:1;
+                    text: "Shadow backdrop";
+                }
+            }
+        }
+    }
+
+    Rectangle { // Background for interactive UI
+        x: settings.x;
+        y: settings.y;
+        width: settings.width;
+        height: root.height;
+        background: #666;
+        z: -1;
+    }
+    
+    Rectangle { // "Shadow" behind character portrait
+        background: @linear-gradient(180deg, #0000007F 0%, #00000000);
+        height: 150px;
+        width: root.width;
+        x: 0;
+        y: 0;
+        z: -2;
+
+        visible: shadow_cb.checked;
+    }
+
+    Rectangle { // Black background for luma key
+        background: #000;
+        height: root.height;
+        width: root.width;
+        x: 0;
+        y: 0;
+        z: -3;
+
+        visible: black_cb.checked;
+    }
+}
