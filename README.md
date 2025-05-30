@@ -1,3 +1,7 @@
+## Credits
+
+The UI design for this program is based off of MomoSeventh's winstreak UI for his streams. You can find him on Twitch at [https://www.twitch.tv/momoseventh](https://www.twitch.tv/momoseventh).
+
 ## Quick Start
 
 If you just want to run the application without installing Rust or compiling from source, you can download a pre-built version:
