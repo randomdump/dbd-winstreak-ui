@@ -257,13 +257,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         move |cat| {
             if let Some(ui) = ui_weak.upgrade() {
                 let kidx = *cur_k.borrow();
-                if let Some(pos) = killers.borrow()[kidx]
+                let killer_data = killers.borrow();
+                if let Some(pos) = killer_data[kidx]
                     .streaks
                     .iter()
                     .position(|s| s.name == cat.as_str())
                 {
                     *cur_s.borrow_mut() = pos;
-                    update_ui(&ui, &killers.borrow()[kidx], pos);
+                    let selected_streak_category = &killer_data[kidx].streaks[pos];
+                    ui.set_counter(selected_streak_category.current);
+                    ui.set_pbValue(selected_streak_category.best);
+                    ui.set_selected_streak_category_index(pos as i32);
                 }
             }
         }
