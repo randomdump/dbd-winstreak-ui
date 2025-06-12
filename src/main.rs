@@ -282,20 +282,46 @@ fn main() -> Result<(), Box<dyn Error>> {
         if let Ok(mut list) = killers_ref.try_borrow_mut() {
             let kidx = *cur_k_ref.borrow();
             let sidx = *cur_s_ref.borrow();
-            if let Some(cat) = list[kidx].streaks.get_mut(sidx) {
+            let killer = &mut list[kidx];
+
+            if let Some(cat) = killer.streaks.get_mut(sidx) {
                 if is_win {
                     cat.current += 1;
                     cat.best = cat.best.max(cat.current);
                 } else {
                     cat.current = 0;
                 }
-                let (current, best) = (cat.current, cat.best);
-                drop(list);
-                save_data(&killers_ref.borrow()).ok();
-                if let Some(ui) = ui_weak.upgrade() {
-                    ui.set_counter(current);
-                    ui.set_pbValue(best);
+            }
+
+            // We update the 3k best since a 4k streak includes 3ks too.
+            if is_win {
+                let four_k_best = killer
+                    .streaks
+                    .iter()
+                    .find(|s| s.name == "4k")
+                    .map(|s| s.best);
+
+                if let Some(best_4k) = four_k_best {
+                    if let Some(three_k_streak) = killer.streaks.iter_mut().find(|s| s.name == "3k")
+                    {
+                        three_k_streak.best = three_k_streak.best.max(best_4k);
+                    }
                 }
+            }
+
+            let (current, best) = if let Some(cat) = killer.streaks.get(sidx) {
+                (cat.current, cat.best)
+            } else {
+                (0, 0)
+            };
+
+            drop(list);
+
+            save_data(&killers_ref.borrow()).ok();
+
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_counter(current);
+                ui.set_pbValue(best);
             }
         }
     };
