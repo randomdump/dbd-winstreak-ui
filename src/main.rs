@@ -12,8 +12,10 @@ use std::{
 };
 slint::include_modules!();
 
-/// Default streak categories—used when streaks.txt doesn't exist or is empty.
-static DEFAULT_STREAK_CATEGORIES: &[&str] = &["4k", "3k", "Perkless 4k", "Perkless 3k"];
+/// Default streak categories for killers.
+static DEFAULT_KILLER_STREAK_CATEGORIES: &[&str] = &["4k", "3k", "Perkless 4k", "Perkless 3k"];
+/// Default streak categories for survivor.
+static DEFAULT_SURVIVOR_STREAK_CATEGORIES: &[&str] = &["Solo escape", "3 out"];
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct StreakCategory {
@@ -23,26 +25,22 @@ struct StreakCategory {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct Killer {
+struct Character {
     name: String,
     image_path: String,
     streaks: Vec<StreakCategory>,
 }
 
-/// Load streak categories from streaks.txt, falling back to defaults if needed.
-fn load_streak_categories() -> Vec<String> {
-    const STREAKS_FILE: &str = "streaks.txt";
-
-    if let Ok(file) = std::fs::File::open(STREAKS_FILE) {
+/// Load streak categories from a text file, falling back to defaults if needed.
+fn load_categories_from_file(path: &str, defaults: &[&str]) -> Vec<String> {
+    if let Ok(file) = std::fs::File::open(path) {
         let reader = BufReader::new(file);
-        let mut categories = Vec::new();
-
-        for line in reader.lines().map_while(Result::ok) {
-            let trimmed = line.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with('#') {
-                categories.push(trimmed.to_string());
-            }
-        }
+        let categories: Vec<String> = reader
+            .lines()
+            .map_while(Result::ok)
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect();
 
         if !categories.is_empty() {
             return categories;
@@ -50,20 +48,16 @@ fn load_streak_categories() -> Vec<String> {
     }
 
     // File doesn't exist or is empty, create it with defaults
-    if let Err(e) = create_default_streaks_file(STREAKS_FILE) {
-        eprintln!("Warning: Could not create {}: {}", STREAKS_FILE, e);
+    if let Err(e) = create_default_streaks_file(path, defaults) {
+        eprintln!("Warning: Could not create {}: {}", path, e);
     }
 
-    DEFAULT_STREAK_CATEGORIES
-        .iter()
-        .map(|&s| s.to_string())
-        .collect()
+    defaults.iter().map(|&s| s.to_string()).collect()
 }
 
-/// Create a default streaks.txt file with comments explaining how to use it.
-fn create_default_streaks_file(path: &str) -> Result<(), Box<dyn Error>> {
+/// Create a default streaks text file with comments explaining how to use it.
+fn create_default_streaks_file(path: &str, defaults: &[&str]) -> Result<(), Box<dyn Error>> {
     let mut file = std::fs::File::create(path)?;
-
     writeln!(file, "# Streak Categories Configuration")?;
     writeln!(
         file,
@@ -75,39 +69,24 @@ fn create_default_streaks_file(path: &str) -> Result<(), Box<dyn Error>> {
     )?;
     writeln!(file, "# Empty lines are also ignored.")?;
     writeln!(file, "#")?;
-    writeln!(
-        file,
-        "# Add your own streak types by adding new lines below."
-    )?;
-    writeln!(file, "# Example: No Add-ons 4k")?;
-    writeln!(file, "# Example: Adept Achievement")?;
-    writeln!(
-        file,
-        "# Once you add your streak type, re-run the application."
-    )?;
-    writeln!(file, "#")?;
     writeln!(file, "# Default streak categories:")?;
-
-    for &category in DEFAULT_STREAK_CATEGORIES {
+    for &category in defaults {
         writeln!(file, "{}", category)?;
     }
-
     Ok(())
 }
 
-/// Adds any missing categories to each killer and returns whether mutations occurred.
-fn ensure_categories(killers: &mut [Killer], categories: &[String]) -> bool {
+/// Adds any missing categories to a character and returns whether mutations occurred.
+fn ensure_categories(character: &mut Character, categories: &[String]) -> bool {
     let mut changed = false;
-    for kr in killers.iter_mut() {
-        for cat in categories {
-            if !kr.streaks.iter().any(|s| s.name == *cat) {
-                kr.streaks.push(StreakCategory {
-                    name: cat.clone(),
-                    current: 0,
-                    best: 0,
-                });
-                changed = true;
-            }
+    for cat_name in categories {
+        if !character.streaks.iter().any(|s| s.name == *cat_name) {
+            character.streaks.push(StreakCategory {
+                name: cat_name.clone(),
+                current: 0,
+                best: 0,
+            });
+            changed = true;
         }
     }
     changed
@@ -125,20 +104,23 @@ fn format_name(stem: &str) -> String {
         })
 }
 
-fn load_data() -> Vec<Killer> {
-    const JSON: &str = "killers.json";
+fn load_data() -> Vec<Character> {
+    const JSON: &str = "streaks.json";
     let mut data_changed = false;
-    let streak_categories = load_streak_categories();
 
-    // Try reading existing data
-    let mut killers: Vec<Killer> = if let Ok(file) = OpenOptions::new().read(true).open(JSON) {
+    let killer_cats =
+        load_categories_from_file("killer_streaks.txt", DEFAULT_KILLER_STREAK_CATEGORIES);
+    let survivor_cats =
+        load_categories_from_file("survivor_streaks.txt", DEFAULT_SURVIVOR_STREAK_CATEGORIES);
+
+    let mut characters: Vec<Character> = if let Ok(file) = OpenOptions::new().read(true).open(JSON)
+    {
         let reader = BufReader::new(&file);
         serde_json::from_reader(reader).unwrap_or_else(|_| Vec::new())
     } else {
         Vec::new()
     };
 
-    // Discover new killers in media directory
     if let Ok(entries) = fs::read_dir("media") {
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
@@ -149,11 +131,16 @@ fn load_data() -> Vec<Killer> {
             {
                 let stem = path.file_stem().unwrap().to_str().unwrap();
                 let name = format_name(stem);
-                if !killers.iter().any(|k| k.name == name) {
-                    killers.push(Killer {
+                if !characters.iter().any(|c| c.name == name) {
+                    let cats_to_use = if name.eq_ignore_ascii_case("survivor") {
+                        &survivor_cats
+                    } else {
+                        &killer_cats
+                    };
+                    characters.push(Character {
                         name,
                         image_path: path.to_string_lossy().into(),
-                        streaks: streak_categories
+                        streaks: cats_to_use
                             .iter()
                             .map(|n| StreakCategory {
                                 name: n.clone(),
@@ -168,103 +155,112 @@ fn load_data() -> Vec<Killer> {
         }
     }
 
-    // Ensure all categories from streaks.txt are present
-    if ensure_categories(&mut killers, &streak_categories) {
+    let mut categories_updated = false;
+    for character in &mut characters {
+        let cats_to_use = if character.name.eq_ignore_ascii_case("survivor") {
+            &survivor_cats
+        } else {
+            &killer_cats
+        };
+        if ensure_categories(character, cats_to_use) {
+            categories_updated = true;
+        }
+    }
+    if categories_updated {
         data_changed = true;
     }
 
     if data_changed {
-        save_data(&killers).ok();
+        save_data(&characters).ok();
     }
 
-    killers.sort_by(|a, b| a.name.cmp(&b.name));
-    killers
+    characters.sort_by(|a, b| a.name.cmp(&b.name));
+    characters
 }
 
-fn save_data(killers: &[Killer]) -> Result<(), Box<dyn Error>> {
+fn save_data(characters: &[Character]) -> Result<(), Box<dyn Error>> {
     let file = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .open("killers.json")?;
+        .open("streaks.json")?;
     let writer = BufWriter::new(file);
-    serde_json::to_writer_pretty(writer, killers)?;
+    serde_json::to_writer_pretty(writer, characters)?;
     Ok(())
 }
 
-fn update_ui(ui: &AppWindow, killer: &Killer, idx: usize) {
-    ui.set_killer_name(killer.name.clone().into());
-    let img = Image::load_from_path(Path::new(&killer.image_path)).unwrap_or_default();
+fn update_ui(ui: &AppWindow, character: &Character, streak_idx: usize) {
+    ui.set_killer_name(character.name.clone().into());
+    let img = Image::load_from_path(Path::new(&character.image_path)).unwrap_or_default();
     ui.set_killer_image(img);
-    let names: Vec<_> = killer
+    let names: Vec<_> = character
         .streaks
         .iter()
         .map(|s| s.name.clone().into())
         .collect();
     ui.set_streak_category_names(Rc::new(VecModel::from(names)).into());
-    let i = idx.min(killer.streaks.len().saturating_sub(1));
-    let cat = &killer.streaks[i];
-    ui.set_counter(cat.current);
-    ui.set_pbValue(cat.best);
-    ui.set_selected_streak_category_index(i as i32);
+    let i = streak_idx.min(character.streaks.len().saturating_sub(1));
+    if let Some(cat) = character.streaks.get(i) {
+        ui.set_counter(cat.current);
+        ui.set_pbValue(cat.best);
+        ui.set_selected_streak_category_index(i as i32);
+    }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let killers = Rc::new(RefCell::new(load_data()));
-    let cur_k = Rc::new(RefCell::new(0));
-    let cur_s = Rc::new(RefCell::new(0));
+    let characters = Rc::new(RefCell::new(load_data()));
+    let current_char_idx = Rc::new(RefCell::new(0));
+    let current_streak_idx = Rc::new(RefCell::new(0));
     let ui = AppWindow::new()?;
 
-    if let Some(k) = killers.borrow().first() {
-        update_ui(&ui, k, 0);
-        let names: Vec<_> = killers
+    if let Some(c) = characters.borrow().first() {
+        update_ui(&ui, c, 0);
+        let names: Vec<_> = characters
             .borrow()
             .iter()
-            .map(|k| k.name.clone().into())
+            .map(|c| c.name.clone().into())
             .collect();
         ui.set_killer_names(Rc::new(VecModel::from(names)).into());
         ui.set_selected_killer_index(0);
     }
 
-    // Killer selection handler
     ui.on_killer_selected({
         let ui_weak = ui.as_weak();
-        let killers = killers.clone();
-        let cur_k = cur_k.clone();
-        let cur_s = cur_s.clone();
+        let characters = characters.clone();
+        let current_char_idx = current_char_idx.clone();
+        let current_streak_idx = current_streak_idx.clone();
         move |name| {
             if let Some(ui) = ui_weak.upgrade() {
-                if let Some(idx) = killers
+                if let Some(idx) = characters
                     .borrow()
                     .iter()
-                    .position(|k| k.name == name.as_str())
+                    .position(|c| c.name == name.as_str())
                 {
-                    *cur_k.borrow_mut() = idx;
-                    *cur_s.borrow_mut() = 0;
-                    update_ui(&ui, &killers.borrow()[idx], 0);
+                    *current_char_idx.borrow_mut() = idx;
+                    *current_streak_idx.borrow_mut() = 0;
+                    update_ui(&ui, &characters.borrow()[idx], 0);
                     ui.set_selected_killer_index(idx as i32);
                 }
             }
         }
     });
 
-    // Streak category handler
     ui.on_streak_category_selected({
         let ui_weak = ui.as_weak();
-        let killers = killers.clone();
-        let cur_k = cur_k.clone();
-        let cur_s = cur_s.clone();
+        let characters = characters.clone();
+        let current_char_idx = current_char_idx.clone();
+        let current_streak_idx = current_streak_idx.clone();
         move |cat| {
             if let Some(ui) = ui_weak.upgrade() {
-                let kidx = *cur_k.borrow();
-                let killer_data = killers.borrow();
-                if let Some(pos) = killer_data[kidx]
+                let char_idx = *current_char_idx.borrow();
+                let char_data = characters.borrow();
+                if let Some(pos) = char_data[char_idx]
                     .streaks
                     .iter()
                     .position(|s| s.name == cat.as_str())
                 {
-                    *cur_s.borrow_mut() = pos;
-                    let selected_streak_category = &killer_data[kidx].streaks[pos];
+                    *current_streak_idx.borrow_mut() = pos;
+                    let selected_streak_category = &char_data[char_idx].streaks[pos];
                     ui.set_counter(selected_streak_category.current);
                     ui.set_pbValue(selected_streak_category.best);
                     ui.set_selected_streak_category_index(pos as i32);
@@ -273,55 +269,56 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    // Win/Loss recorder
-    let ui_weak = ui.as_weak();
-    let killers_ref = killers.clone();
-    let cur_k_ref = cur_k.clone();
-    let cur_s_ref = cur_s.clone();
-    let record = move |is_win: bool| {
-        if let Ok(mut list) = killers_ref.try_borrow_mut() {
-            let kidx = *cur_k_ref.borrow();
-            let sidx = *cur_s_ref.borrow();
-            let killer = &mut list[kidx];
+    let record = {
+        let ui_weak = ui.as_weak();
+        let characters_ref = characters.clone();
+        let current_char_idx_ref = current_char_idx.clone();
+        let current_streak_idx_ref = current_streak_idx.clone();
+        move |is_win: bool| {
+            if let Ok(mut list) = characters_ref.try_borrow_mut() {
+                let char_idx = *current_char_idx_ref.borrow();
+                let s_idx = *current_streak_idx_ref.borrow();
+                let character = &mut list[char_idx];
 
-            if let Some(cat) = killer.streaks.get_mut(sidx) {
-                if is_win {
-                    cat.current += 1;
-                    cat.best = cat.best.max(cat.current);
-                } else {
-                    cat.current = 0;
-                }
-            }
-
-            // We update the 3k best since a 4k streak includes 3ks too.
-            if is_win {
-                let four_k_best = killer
-                    .streaks
-                    .iter()
-                    .find(|s| s.name == "4k")
-                    .map(|s| s.best);
-
-                if let Some(best_4k) = four_k_best {
-                    if let Some(three_k_streak) = killer.streaks.iter_mut().find(|s| s.name == "3k")
-                    {
-                        three_k_streak.best = three_k_streak.best.max(best_4k);
+                if let Some(cat) = character.streaks.get_mut(s_idx) {
+                    if is_win {
+                        cat.current += 1;
+                        cat.best = cat.best.max(cat.current);
+                    } else {
+                        cat.current = 0;
                     }
                 }
-            }
 
-            let (current, best) = if let Some(cat) = killer.streaks.get(sidx) {
-                (cat.current, cat.best)
-            } else {
-                (0, 0)
-            };
+                // This killer-specific logic should not run for survivor.
+                if is_win && !character.name.eq_ignore_ascii_case("survivor") {
+                    if let Some(best_4k) = character
+                        .streaks
+                        .iter()
+                        .find(|s| s.name == "4k")
+                        .map(|s| s.best)
+                    {
+                        if let Some(three_k_streak) =
+                            character.streaks.iter_mut().find(|s| s.name == "3k")
+                        {
+                            three_k_streak.best = three_k_streak.best.max(best_4k);
+                        }
+                    }
+                }
 
-            drop(list);
+                let (current, best) = if let Some(cat) = character.streaks.get(s_idx) {
+                    (cat.current, cat.best)
+                } else {
+                    (0, 0)
+                };
 
-            save_data(&killers_ref.borrow()).ok();
+                drop(list);
 
-            if let Some(ui) = ui_weak.upgrade() {
-                ui.set_counter(current);
-                ui.set_pbValue(best);
+                save_data(&characters_ref.borrow()).ok();
+
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_counter(current);
+                    ui.set_pbValue(best);
+                }
             }
         }
     };
