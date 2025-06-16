@@ -1,6 +1,6 @@
 ## Credits
 
-The UI design for this program is based off of MomoSeventh's winstreak UI for his streams. You can find him on Twitch at [https://www.twitch.tv/momoseventh](https://www.twitch.tv/momoseventh).
+The UI design for this program is based on MomoSeventh's winstreak UI for his streams. You can find him on Twitch at [https://www.twitch.tv/momoseventh](https://www.twitch.tv/momoseventh).
 
 ## Quick Start
 
@@ -12,26 +12,26 @@ If you just want to run the application without installing Rust or compiling fro
 3.  Extract the contents of the downloaded archive. Inside you will find the executable and all necessary files.
 4.  Run the executable directly.
 
-To update the app, simply download the newest version and copy over your `killers.json` and `streaks.txt` files. Note that if you added your own killers into the media folder you will need to copy those files over to the new version too.
+To update the app, simply download the newest version and copy over your `killers.json` and `streaks.txt` files. Note: If you have added custom killers to the `media` folder, you will also need to copy those files to the new version.
 
 ## Using in OBS
 
-To add this UI into your OBS scene, follow these steps:
+To add this UI to your OBS scene, follow these steps:
 
-1.  Add a new `Window Capture` source, name it anything you want.
+1.  Add a new `Window Capture` source, naming it anything you want.
 2.  If you want the transparent background without luma keying in OBS, set the window capture method to `Windows 10 (1903 and up)`.
-3.  Right click on your newly created source and click `Filters`
+3.  Right-click on your newly created source and click `Filters`.
 4.  Add a `Crop/Pad` video filter, set it to relative, and set the right crop to 320.
 
-If you can't capture the transparent background (or don't want it), check the "Black backgound" option in the UI and add the `Luma Key` video filter to your capture in OBS. Adjust the `Luma Min` value to your likings, I recommend 0.001.
+If you can't capture the transparent background (or don't want it), check the "Black background" option in the UI and add the `Luma Key` video filter to your capture in OBS. Adjust the `Luma Min` value to your liking; I recommend 0.001.
 
-## Streak types
+## Streak Types
 
-Once you run the application a `streaks.txt` file will be created with instructions in it. If you want to add your own streak types then follow the instructions in that file.
+Once you run the application, a `streaks.txt` file will be created with instructions in it. If you want to add your own streak types, follow the instructions in that file.
 
-## Adding custom killers
+## Adding Custom Killers
 
-If you want to add a new killer (or anything else) then add a new image into the media folder. The image must be in the png format and should be 96x96 to look best in the UI. The name of the image will be automatically converted to be shown in the UI (though you can change it in `killers.json` afterwards).
+If you want to add a new killer (or anything else), add a new image to the `media` folder. The image must be in PNG format and should be 96x96 to look best in the UI. The name of the image will be automatically converted to be shown in the UI (though you can change it in `killers.json` afterwards).
 
 - "TheNurse" or "The_Nurse" turns into "The Nurse"
 - "the_nurse" turns into "the nurse"
