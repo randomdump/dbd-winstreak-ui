@@ -189,7 +189,16 @@ fn save_data(characters: &[Character]) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn update_ui(ui: &AppWindow, character: &Character, streak_idx: usize) {
+fn update_streak_display(ui: &AppWindow, character: &Character, streak_idx: usize) {
+    let i = streak_idx.min(character.streaks.len().saturating_sub(1));
+    if let Some(cat) = character.streaks.get(i) {
+        ui.set_counter(cat.current);
+        ui.set_pbValue(cat.best);
+        ui.set_selected_streak_category_index(i as i32);
+    }
+}
+
+fn update_ui(ui: &AppWindow, character: &Character) {
     ui.set_killer_name(character.name.clone().into());
     let img = Image::load_from_path(Path::new(&character.image_path)).unwrap_or_default();
     ui.set_killer_image(img);
@@ -199,12 +208,6 @@ fn update_ui(ui: &AppWindow, character: &Character, streak_idx: usize) {
         .map(|s| s.name.clone().into())
         .collect();
     ui.set_streak_category_names(Rc::new(VecModel::from(names)).into());
-    let i = streak_idx.min(character.streaks.len().saturating_sub(1));
-    if let Some(cat) = character.streaks.get(i) {
-        ui.set_counter(cat.current);
-        ui.set_pbValue(cat.best);
-        ui.set_selected_streak_category_index(i as i32);
-    }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -214,7 +217,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let ui = AppWindow::new()?;
 
     if let Some(c) = characters.borrow().first() {
-        update_ui(&ui, c, 0);
+        update_ui(&ui, c);
+        update_streak_display(&ui, c, 0);
         let names: Vec<_> = characters
             .borrow()
             .iter()
@@ -238,7 +242,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 {
                     *current_char_idx.borrow_mut() = idx;
                     *current_streak_idx.borrow_mut() = 0;
-                    update_ui(&ui, &characters.borrow()[idx], 0);
+                    update_ui(&ui, &characters.borrow()[idx]);
+                    update_streak_display(&ui, &characters.borrow()[idx], 0);
                     ui.set_selected_killer_index(idx as i32);
                 }
             }
@@ -260,10 +265,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .position(|s| s.name == cat.as_str())
                 {
                     *current_streak_idx.borrow_mut() = pos;
-                    let selected_streak_category = &char_data[char_idx].streaks[pos];
-                    ui.set_counter(selected_streak_category.current);
-                    ui.set_pbValue(selected_streak_category.best);
-                    ui.set_selected_streak_category_index(pos as i32);
+                    update_streak_display(&ui, &char_data[char_idx], pos);
                 }
             }
         }
@@ -305,20 +307,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
 
-                let (current, best) = if let Some(cat) = character.streaks.get(s_idx) {
-                    (cat.current, cat.best)
-                } else {
-                    (0, 0)
-                };
+                if let Some(ui) = ui_weak.upgrade() {
+                    update_streak_display(&ui, &character, s_idx);
+                }
 
                 drop(list);
 
                 save_data(&characters_ref.borrow()).ok();
-
-                if let Some(ui) = ui_weak.upgrade() {
-                    ui.set_counter(current);
-                    ui.set_pbValue(best);
-                }
             }
         }
     };
