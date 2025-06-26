@@ -116,7 +116,7 @@ fn load_data() -> Vec<Character> {
     let mut characters: Vec<Character> = if let Ok(file) = OpenOptions::new().read(true).open(JSON)
     {
         let reader = BufReader::new(&file);
-        serde_json::from_reader(reader).unwrap_or_else(|_| Vec::new())
+        serde_json::from_reader(reader).unwrap_or_default()
     } else {
         Vec::new()
     };
@@ -129,27 +129,28 @@ fn load_data() -> Vec<Character> {
                 .and_then(|e| e.to_str())
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
             {
-                let stem = path.file_stem().unwrap().to_str().unwrap();
-                let name = format_name(stem);
-                if !characters.iter().any(|c| c.name == name) {
-                    let cats_to_use = if name.eq_ignore_ascii_case("survivor") {
-                        &survivor_cats
-                    } else {
-                        &killer_cats
-                    };
-                    characters.push(Character {
-                        name,
-                        image_path: path.to_string_lossy().into(),
-                        streaks: cats_to_use
-                            .iter()
-                            .map(|n| StreakCategory {
-                                name: n.clone(),
-                                current: 0,
-                                best: 0,
-                            })
-                            .collect(),
-                    });
-                    data_changed = true;
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    let name = format_name(stem);
+                    if !characters.iter().any(|c| c.name == name) {
+                        let cats_to_use = if name.eq_ignore_ascii_case("survivor") {
+                            &survivor_cats
+                        } else {
+                            &killer_cats
+                        };
+                        characters.push(Character {
+                            name,
+                            image_path: path.to_string_lossy().into(),
+                            streaks: cats_to_use
+                                .iter()
+                                .map(|n| StreakCategory {
+                                    name: n.clone(),
+                                    current: 0,
+                                    best: 0,
+                                })
+                                .collect(),
+                        });
+                        data_changed = true;
+                    }
                 }
             }
         }
@@ -242,9 +243,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 {
                     *current_char_idx.borrow_mut() = idx;
                     *current_streak_idx.borrow_mut() = 0;
-                    update_ui(&ui, &characters.borrow()[idx]);
-                    update_streak_display(&ui, &characters.borrow()[idx], 0);
-                    ui.set_selected_killer_index(idx as i32);
+                    if let Some(character) = characters.borrow().get(idx) {
+                        update_ui(&ui, character);
+                        update_streak_display(&ui, character, 0);
+                        ui.set_selected_killer_index(idx as i32);
+                    }
                 }
             }
         }
@@ -258,14 +261,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         move |cat| {
             if let Some(ui) = ui_weak.upgrade() {
                 let char_idx = *current_char_idx.borrow();
-                let char_data = characters.borrow();
-                if let Some(pos) = char_data[char_idx]
-                    .streaks
-                    .iter()
-                    .position(|s| s.name == cat.as_str())
-                {
-                    *current_streak_idx.borrow_mut() = pos;
-                    update_streak_display(&ui, &char_data[char_idx], pos);
+                if let Some(character) = characters.borrow().get(char_idx) {
+                    if let Some(pos) = character
+                        .streaks
+                        .iter()
+                        .position(|s| s.name == cat.as_str())
+                    {
+                        *current_streak_idx.borrow_mut() = pos;
+                        update_streak_display(&ui, character, pos);
+                    }
                 }
             }
         }
@@ -280,35 +284,35 @@ fn main() -> Result<(), Box<dyn Error>> {
             if let Ok(mut list) = characters_ref.try_borrow_mut() {
                 let char_idx = *current_char_idx_ref.borrow();
                 let s_idx = *current_streak_idx_ref.borrow();
-                let character = &mut list[char_idx];
-
-                if let Some(cat) = character.streaks.get_mut(s_idx) {
-                    if is_win {
-                        cat.current += 1;
-                        cat.best = cat.best.max(cat.current);
-                    } else {
-                        cat.current = 0;
-                    }
-                }
-
-                // This killer-specific logic should not run for survivor.
-                if is_win && !character.name.eq_ignore_ascii_case("survivor") {
-                    if let Some(best_4k) = character
-                        .streaks
-                        .iter()
-                        .find(|s| s.name == "4k")
-                        .map(|s| s.best)
-                    {
-                        if let Some(three_k_streak) =
-                            character.streaks.iter_mut().find(|s| s.name == "3k")
-                        {
-                            three_k_streak.best = three_k_streak.best.max(best_4k);
+                if let Some(character) = list.get_mut(char_idx) {
+                    if let Some(cat) = character.streaks.get_mut(s_idx) {
+                        if is_win {
+                            cat.current += 1;
+                            cat.best = cat.best.max(cat.current);
+                        } else {
+                            cat.current = 0;
                         }
                     }
-                }
 
-                if let Some(ui) = ui_weak.upgrade() {
-                    update_streak_display(&ui, &character, s_idx);
+                    // This killer-specific logic should not run for survivor.
+                    if is_win && !character.name.eq_ignore_ascii_case("survivor") {
+                        if let Some(best_4k) = character
+                            .streaks
+                            .iter()
+                            .find(|s| s.name == "4k")
+                            .map(|s| s.best)
+                        {
+                            if let Some(three_k_streak) =
+                                character.streaks.iter_mut().find(|s| s.name == "3k")
+                            {
+                                three_k_streak.best = three_k_streak.best.max(best_4k);
+                            }
+                        }
+                    }
+
+                    if let Some(ui) = ui_weak.upgrade() {
+                        update_streak_display(&ui, &character, s_idx);
+                    }
                 }
 
                 drop(list);
